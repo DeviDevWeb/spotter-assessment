@@ -7,6 +7,10 @@ export const formatDuration = (seconds: number) => {
     return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`;
 };
 
+// Short local date/time, e.g. "Thu, Nov 19, 03:30 PM"
+export const formatDateTime = (date: string | Date) =>
+    new Date(date).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
 // Value for <input type="datetime-local">, in the browser's local time
 export const toDateTimeInputValue = (date: Date) => {
     const pad = (n: number) => String(n).padStart(2, '0');

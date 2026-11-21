@@ -3,8 +3,8 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework import serializers
 
-# A few hours in the past is still accepted. Departures are limited to the next 48 hours, the
-# range the planned forecast heatmap will cover
+# A few hours in the past is still accepted. The heatmap shows 48 hours of forecast from
+# departure, so departures further out than that aren't offered
 MAX_PAST_DEPARTURE = timedelta(hours=6)
 MAX_FUTURE_DEPARTURE = timedelta(hours=48)
 

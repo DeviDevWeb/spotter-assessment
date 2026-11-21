@@ -14,6 +14,7 @@ interface Props {
     origin: PlaceValue;
     destination: PlaceValue;
     onPlaceChange: (field: PlaceField, value: PlaceValue) => void;
+    onSelectOnMap: (field: PlaceField) => void;
     onSubmit: (request: TripRequest) => void;
     onReset: () => void;
     loading: boolean;
@@ -25,7 +26,7 @@ const toRequestPlace = (place: PlaceValue) => {
     return { value: formatLatLon(place.point), name: parseLatLon(place.text) ? '' : place.text.trim() };
 };
 
-const TripForm = ({ origin, destination, onPlaceChange, onSubmit, onReset, loading }: Props) => {
+const TripForm = ({ origin, destination, onPlaceChange, onSelectOnMap, onSubmit, onReset, loading }: Props) => {
     const [departure, setDeparture] = useState(() => toDateTimeInputValue(nextHour()));
     // Latest departure the picker offers, set when the form mounts (and again on Reset)
     const [maxDeparture] = useState(() => toDateTimeInputValue(new Date(Date.now() + MAX_DEPARTURE_HOURS * HOUR_MS)));
@@ -61,12 +62,14 @@ const TripForm = ({ origin, destination, onPlaceChange, onSubmit, onReset, loadi
                 placeholder="Dallas, TX"
                 value={origin}
                 onChange={(value) => onPlaceChange('origin', value)}
+                onSelectOnMap={() => onSelectOnMap('origin')}
             />
             <PlaceInput
                 label="Destination"
                 placeholder="Chicago, IL"
                 value={destination}
                 onChange={(value) => onPlaceChange('destination', value)}
+                onSelectOnMap={() => onSelectOnMap('destination')}
             />
 
             <div className="grid grid-cols-2 gap-2.5">

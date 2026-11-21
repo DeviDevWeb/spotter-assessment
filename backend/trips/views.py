@@ -16,7 +16,7 @@ def health(_request: Request) -> Response:
     return Response({'status': 'ok'})
 
 
-# Plan a trip: 3 scored routes and the recommended one - API endpoint
+# Plan a trip: 3 scored routes, the recommended one and the 0-48h corridor heatmap - API endpoint
 # Pipeline (trips/services): geocoding -> routing -> checkpoints -> weather -> risk -> recommendation
 class PlanTripView(APIView):
     def post(self, request: Request) -> Response:

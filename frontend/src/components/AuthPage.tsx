@@ -1,17 +1,22 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { motion } from 'motion/react';
+import Map, { AttributionControl } from 'react-map-gl/maplibre';
 import { login, register } from '../api/client';
 import type { User } from '../types';
+import { MAP_STYLE } from '../utils/map';
 
 type Mode = 'login' | 'register';
+
+// Highways of the central US, shown as a still background behind the login card
+const BACKGROUND_VIEW = { longitude: -92, latitude: 38.5, zoom: 5.3 };
 
 interface Props {
     onAuthenticated: (user: User) => void;
     notice: string | null;
 }
 
-// Login / registration form
+// Login / registration form over a road map background
 const AuthPage = ({ onAuthenticated, notice }: Props) => {
     const [mode, setMode] = useState<Mode>('login');
     const [username, setUsername] = useState('');
@@ -42,6 +47,20 @@ const AuthPage = ({ onAuthenticated, notice }: Props) => {
 
     return (
         <div className="relative flex min-h-full items-center justify-center overflow-hidden bg-ink p-4">
+            <div className="auth-map absolute inset-0" aria-hidden="true">
+                {/* Credits always expanded (instead of behind an "i" button), as plain text in the corner */}
+                <Map
+                    initialViewState={BACKGROUND_VIEW}
+                    mapStyle={MAP_STYLE}
+                    interactive={false}
+                    attributionControl={false}
+                    style={{ width: '100%', height: '100%' }}
+                >
+                    <AttributionControl compact={false} position="bottom-right" />
+                </Map>
+            </div>
+            {/* Darkens the map so the card stands out */}
+            <div className="pointer-events-none absolute inset-0 bg-linear-135 from-[rgba(17,24,39,0.65)] to-[rgba(31,111,235,0.35)]" />
             <motion.form
                 className="relative flex w-full max-w-[360px] flex-col gap-3 rounded-[10px] bg-white p-6 shadow-[0_8px_32px_rgba(0,0,0,0.3)]"
                 onSubmit={handleSubmit}

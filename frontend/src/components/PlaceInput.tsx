@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { FiMapPin } from 'react-icons/fi';
 import { searchPlaces } from '../api/client';
 import type { PlaceSuggestion, PlaceValue } from '../types';
 import { parseLatLon } from '../utils/format';
@@ -13,10 +14,11 @@ interface Props {
     placeholder: string;
     value: PlaceValue;
     onChange: (value: PlaceValue) => void;
+    onSelectOnMap: () => void;
 }
 
-// Place field with a suggestion list while typing
-const PlaceInput = ({ label, placeholder, value, onChange }: Props) => {
+// Place field with a suggestion list while typing, and a button to pick the spot on the map
+const PlaceInput = ({ label, placeholder, value, onChange, onSelectOnMap }: Props) => {
     const id = useId();
     const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
     const [open, setOpen] = useState(false);
@@ -131,6 +133,16 @@ const PlaceInput = ({ label, placeholder, value, onChange }: Props) => {
                         )}
                     </AnimatePresence>
                 </div>
+                <motion.button
+                    type="button"
+                    className="flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-brand-soft px-2.5 text-[0.8rem] font-semibold text-brand transition-colors hover:bg-[#d6e4fd]"
+                    onClick={onSelectOnMap}
+                    title={`Select ${label.toLowerCase()} on the map`}
+                    whileTap={{ scale: 0.92 }}
+                >
+                    <FiMapPin />
+                    Select
+                </motion.button>
             </div>
         </div>
     );

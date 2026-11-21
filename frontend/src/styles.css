@@ -50,3 +50,24 @@
         @apply rounded-md bg-[#fde8e8] p-2.5 text-[#9b1c1c];
     }
 }
+
+/* MapLibre's own elements, which only take classes through these selectors */
+
+/* Popup box made transparent so the animated panel inside can pop as a whole */
+.checkpoint-popup-container .maplibregl-popup-content {
+    @apply bg-transparent p-0 shadow-none;
+}
+
+/* Above the animated panel. Sized and inset by hand because Tailwind's reset strips the button's padding and font size */
+.checkpoint-popup-container .maplibregl-popup-close-button {
+    @apply top-1.5 right-1.5 z-1 flex size-6 items-center justify-center rounded-full text-lg leading-none text-muted hover:bg-line hover:text-ink;
+}
+
+/* Map credits on the login page: small plain text instead of a white box */
+.auth-map .maplibregl-ctrl-attrib {
+    @apply bg-[rgba(17,24,39,0.55)] text-[11px] text-white/80;
+}
+
+.auth-map .maplibregl-ctrl-attrib a {
+    @apply text-inherit;
+}

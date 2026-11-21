@@ -5,6 +5,7 @@ from .checkpoints import build_checkpoints
 from .errors import InputError
 from .geo import haversine_miles
 from .geocoding import geocode
+from .heatmap import build_heatmap
 from .recommendation import explain, recommend, summarize
 from .risk import classify
 from .routing import get_route_options
@@ -29,6 +30,7 @@ def plan_trip(request: dict) -> dict:
     for route in routes:
         route.checkpoints = build_checkpoints(route, departure, now)
 
+    # Checkpoints and heatmap share one forecast window, so their cells share cache entries
     all_checkpoints = [cp for route in routes for cp in route.checkpoints]
     window = forecast_window(departure, max(cp.eta for cp in all_checkpoints))
     sample_checkpoints(all_checkpoints, window)
@@ -46,6 +48,7 @@ def plan_trip(request: dict) -> dict:
         'routes': [_route(route, summaries[route.id]) for route in routes],
         'recommended_route_id': recommend(list(summaries.values())),
         'recommendation_reason': explain(list(summaries.values())),
+        'heatmap': build_heatmap(routes, departure, window, load_weight_lb),
     }
 
 

@@ -11,7 +11,7 @@ export interface LatLon {
     lon: number;
 }
 
-// What a place field holds: the visible text, and coordinates once a suggestion is chosen or "lat, lon" is typed
+// What a place field holds: the visible text, and coordinates once a suggestion or map spot is chosen
 export interface PlaceValue {
     text: string;
     point: LatLon | null;
@@ -88,6 +88,15 @@ export interface RouteOption {
     summary: RouteSummary;
 }
 
+// Risk level (0 Low ... 4 No Travel, -1 no data) per grid point, for each hour from start
+export interface Heatmap {
+    start: string;
+    hours: number;
+    grid_degrees: number;
+    points: [number, number][]; // [lon, lat]
+    values: number[][]; // values[point][hour]
+}
+
 export interface TripPlan {
     origin: Place;
     destination: Place;
@@ -95,4 +104,5 @@ export interface TripPlan {
     routes: RouteOption[];
     recommended_route_id: string;
     recommendation_reason: string;
+    heatmap: Heatmap;
 }
