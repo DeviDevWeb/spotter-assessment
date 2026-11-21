@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from ..domain import Checkpoint, RouteOption
-from .geo import cumulative_miles, point_at_distance
+from .geo import cumulative_miles, points_at
 
 # Checkpoint spacing depends on how far ahead the forecast is at the truck's ETA: forecasts
 # are sharpest in the first hours, so those get the densest sampling.
@@ -29,18 +29,26 @@ def spacing_for(eta: datetime, now: datetime) -> int:
 # average speed over the route's total duration
 def build_checkpoints(route: RouteOption, departure: datetime, now: datetime) -> list[Checkpoint]:
     total = route.distance_miles
-    hours_per_mile = route.duration_seconds / 3600 / total if total else 0
+
+    def eta_at(distance: float) -> datetime:
+        fraction = distance / total if total else 0
+        return departure + timedelta(seconds=route.duration_seconds * fraction)
+
+    distances = [0.0]
+    while True:
+        following = distances[-1] + spacing_for(eta_at(distances[-1]), now)
+        if following >= total - MIN_LAST_GAP_MILES:
+            break
+        distances.append(following)
+    if total > 0:
+        distances.append(total)
+
+    # The simplified geometry is a bit shorter than the real road, scale distances onto it
     cumulative = cumulative_miles(route.geometry)
+    scale = cumulative[-1] / total if total else 0
+    positions = points_at(route.geometry, cumulative, [d * scale for d in distances])
 
-    checkpoints = []
-    distance = 0.0
-    while distance < total - MIN_LAST_GAP_MILES:
-        eta = departure + timedelta(hours=distance * hours_per_mile)
-        position = point_at_distance(route.geometry, cumulative, distance)
-        checkpoints.append(Checkpoint(position=position, distance_miles=distance, eta=eta))
-        distance += spacing_for(eta, now)
-
-    # Always end at the destination
-    arrival = departure + timedelta(seconds=route.duration_seconds)
-    checkpoints.append(Checkpoint(position=route.geometry[-1], distance_miles=total, eta=arrival))
-    return checkpoints
+    return [
+        Checkpoint(position=position, distance_miles=distance, eta=eta_at(distance))
+        for position, distance in zip(positions, distances, strict=True)
+    ]

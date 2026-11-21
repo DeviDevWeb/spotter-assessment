@@ -3,7 +3,7 @@ from itertools import pairwise
 
 from trips.domain import LatLon, RouteOption
 from trips.services.checkpoints import build_checkpoints, spacing_for
-from trips.services.geo import distance_miles
+from trips.services.geo import haversine_miles
 
 NOW = datetime(2026, 1, 1, 8, tzinfo=timezone.utc)
 
@@ -14,7 +14,7 @@ def straight_route(duration_hours: float) -> RouteOption:
     return RouteOption(
         id='A',
         geometry=[start, end],
-        distance_miles=distance_miles(start, end),
+        distance_miles=haversine_miles(start, end),
         duration_seconds=duration_hours * 3600,
     )
 

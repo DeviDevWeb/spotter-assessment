@@ -126,3 +126,32 @@ REST_FRAMEWORK = {
 }
 
 CORS_ALLOWED_ORIGINS = env_list('CORS_ALLOWED_ORIGINS', 'http://localhost:5173')
+
+# Cache
+# In-process cache for geocoding results and forecasts
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'TIMEOUT': 60 * 30,
+    }
+}
+
+# Logging
+# Warnings from the trips app (failed third-party calls) go to the console
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {'console': {'class': 'logging.StreamHandler'}},
+    'loggers': {'trips': {'handlers': ['console'], 'level': 'INFO'}},
+}
+
+# Third-party APIs
+# All keyless public services. Their usage policies ask for an identifying User-Agent
+
+OSRM_BASE_URL = os.getenv('OSRM_BASE_URL', 'https://router.project-osrm.org')
+NOMINATIM_BASE_URL = os.getenv('NOMINATIM_BASE_URL', 'https://nominatim.openstreetmap.org')
+OPEN_METEO_BASE_URL = os.getenv('OPEN_METEO_BASE_URL', 'https://api.open-meteo.com/v1/forecast')
+HTTP_USER_AGENT = os.getenv('HTTP_USER_AGENT', 'weather-aware-truck-routing/0.1')
+UPSTREAM_TIMEOUT_SECONDS = 20
