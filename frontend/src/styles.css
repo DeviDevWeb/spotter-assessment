@@ -1,0 +1,52 @@
+@import 'tailwindcss';
+
+@theme {
+    --font-sans: system-ui, sans-serif;
+    --color-brand: #1f6feb;
+    --color-brand-soft: #e3edfd;
+    --color-ink: #1d2330;
+    --color-muted: #5a6372;
+    --color-line: #dde1e7;
+    --color-input: #c8ced8;
+    --color-danger: #d62828;
+}
+
+@layer base {
+    html,
+    body,
+    #root {
+        height: 100%;
+    }
+
+    body {
+        @apply bg-white text-ink;
+    }
+}
+
+/* Pieces repeated across components */
+@layer components {
+    .field {
+        @apply flex min-w-0 flex-col gap-1;
+    }
+
+    .field > label {
+        @apply text-sm font-semibold;
+    }
+
+    .input {
+        @apply h-9 w-full rounded-md border border-input px-2.5;
+    }
+
+    .btn-primary {
+        @apply h-10 cursor-pointer rounded-md bg-brand font-semibold text-white disabled:cursor-wait disabled:opacity-60;
+    }
+
+    /* Small outlined button: Reset and Log out */
+    .btn-ghost {
+        @apply flex cursor-pointer items-center gap-1.5 rounded-full border border-line bg-white px-2.5 py-1 text-[0.8rem] text-muted transition-colors enabled:hover:border-brand enabled:hover:text-brand disabled:cursor-default disabled:opacity-50;
+    }
+
+    .alert-error {
+        @apply rounded-md bg-[#fde8e8] p-2.5 text-[#9b1c1c];
+    }
+}

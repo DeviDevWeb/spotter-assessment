@@ -1,35 +1,43 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect, useState } from 'react';
+import { getMe, getStoredSession, logout, setUnauthorizedHandler } from './api/client';
+import AuthPage from './components/AuthPage';
+import Planner from './components/Planner';
+import type { User } from './types';
 
+// Auth gate: shows the login screen or the planner
 function App() {
-  const [count, setCount] = useState(0)
+    const [user, setUser] = useState<User | null>(() => getStoredSession()?.user ?? null);
+    const [authNotice, setAuthNotice] = useState<string | null>(null);
 
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    // Any 401 from the API (expired / deleted token) sends the user back to login
+    useEffect(() => {
+        setUnauthorizedHandler(() => {
+            setUser(null);
+            setAuthNotice('Your session expired. Please log in again.');
+        });
+        return () => setUnauthorizedHandler(null);
+    }, []);
+
+    // Confirms a stored session is still valid. A rejected token triggers the handler above,
+    // network errors keep the session so the app still opens offline
+    useEffect(() => {
+        if (getStoredSession()) {
+            getMe().catch(() => {});
+        }
+    }, []);
+
+    const handleAuthenticated = (loggedUser: User) => {
+        setAuthNotice(null);
+        setUser(loggedUser);
+    };
+
+    const handleLogout = async () => {
+        await logout();
+        setUser(null);
+    };
+
+    if (!user) return <AuthPage onAuthenticated={handleAuthenticated} notice={authNotice} />;
+    return <Planner user={user} onLogout={handleLogout} />;
 }
 
-export default App
+export default App;
