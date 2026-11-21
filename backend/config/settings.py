@@ -106,13 +106,17 @@ REST_FRAMEWORK = {
 
 CORS_ALLOWED_ORIGINS = env_list('CORS_ALLOWED_ORIGINS', 'http://localhost:5173')
 
+# The browser posts the trip's hourly forecasts back (up to a few MB on long trips), Django's
+# default limit is 2.5 MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+
 ########################################
 ###########Third-party APIs#############
 ########################################
 
-# All keyless public services. Their usage policies ask for an identifying User-Agent
+# All keyless public services. Their usage policies ask for an identifying User-Agent. Weather
+# (Open-Meteo) is fetched by the browser, see trips/services/weather.py
 OSRM_BASE_URL = os.getenv('OSRM_BASE_URL', 'https://router.project-osrm.org')
 NOMINATIM_BASE_URL = os.getenv('NOMINATIM_BASE_URL', 'https://nominatim.openstreetmap.org')
-OPEN_METEO_BASE_URL = os.getenv('OPEN_METEO_BASE_URL', 'https://api.open-meteo.com/v1/forecast')
 HTTP_USER_AGENT = os.getenv('HTTP_USER_AGENT', 'weather-aware-truck-routing/0.1')
 UPSTREAM_TIMEOUT_SECONDS = 20

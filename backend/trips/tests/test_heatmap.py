@@ -1,9 +1,8 @@
 from datetime import date, datetime, timedelta, timezone
-from unittest.mock import patch
 
 from trips.domain import LatLon, RouteOption, WeatherSample
 from trips.services import heatmap
-from trips.services.heatmap import HEATMAP_HOURS, build_heatmap
+from trips.services.heatmap import HEATMAP_HOURS, build_heatmap, heatmap_cells
 
 DEPARTURE = datetime(2026, 1, 1, 8, 20, tzinfo=timezone.utc)
 WINDOW = (date(2026, 1, 1), date(2026, 1, 4))
@@ -14,7 +13,7 @@ def route(start: LatLon, end: LatLon) -> RouteOption:
 
 
 # Fake forecast: wind grows 1 mph per hour from departure, same everywhere
-def fake_series(locations, _window):
+def fake_series(locations):
     first = int(DEPARTURE.replace(minute=0).timestamp())
     series = {
         first + h * 3600: WeatherSample(time=DEPARTURE, wind_mph=float(h), rain_in_per_hr=0, snow_in_per_hr=0)
@@ -23,9 +22,13 @@ def fake_series(locations, _window):
     return {location: series for location in locations}
 
 
-@patch.object(heatmap, 'load_series', side_effect=fake_series)
-def test_heatmap_shape_and_hourly_values(_load):
-    result = build_heatmap([route(LatLon(40, -100), LatLon(41, -100))], DEPARTURE, WINDOW, 0)
+def heatmap_for(*routes: RouteOption) -> dict:
+    grid, locations = heatmap_cells(list(routes))
+    return build_heatmap(locations, grid, fake_series(locations), DEPARTURE, 0)
+
+
+def test_heatmap_shape_and_hourly_values():
+    result = heatmap_for(route(LatLon(40, -100), LatLon(41, -100)))
 
     assert result['hours'] == HEATMAP_HOURS
     assert result['start'] == '2026-01-01T08:00:00+00:00'
@@ -37,9 +40,8 @@ def test_heatmap_shape_and_hourly_values(_load):
 
 
 # A 1 degree north-south route on a 0.5 grid: 3 rows crossed, widened by 1 cell each way
-@patch.object(heatmap, 'load_series', side_effect=fake_series)
-def test_corridor_covers_route_plus_neighbors(_load):
-    result = build_heatmap([route(LatLon(40, -100), LatLon(41, -100))], DEPARTURE, WINDOW, 0)
+def test_corridor_covers_route_plus_neighbors():
+    result = heatmap_for(route(LatLon(40, -100), LatLon(41, -100)))
 
     lats = sorted({lat for _, lat in result['points']})
     lons = sorted({lon for lon, _ in result['points']})
@@ -48,9 +50,8 @@ def test_corridor_covers_route_plus_neighbors(_load):
 
 
 # Very long corridors coarsen the grid instead of exceeding the location budget
-@patch.object(heatmap, 'load_series', side_effect=fake_series)
-def test_long_corridor_is_capped(_load):
-    result = build_heatmap([route(LatLon(40, -120), LatLon(40, -75))], DEPARTURE, WINDOW, 0)
+def test_long_corridor_is_capped():
+    result = heatmap_for(route(LatLon(40, -120), LatLon(40, -75)))
 
     assert len(result['points']) <= heatmap.MAX_CELLS
     assert result['grid_degrees'] > heatmap.BASE_GRID_DEGREES

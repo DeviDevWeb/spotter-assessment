@@ -19,7 +19,7 @@ The driver enters an origin, a destination, a departure time and a load weight. 
 ## How it works
 
 ```
-geocoding → routing → checkpoints → weather → risk → recommendation (+ heatmap)
+geocoding → routing → checkpoints → weather (fetched by the browser) → risk → recommendation (+ heatmap)
 ```
 
 All of it lives in [backend/trips/services/](backend/trips/services/), one module per step, orchestrated by `planner.py`.
@@ -29,7 +29,7 @@ All of it lives in [backend/trips/services/](backend/trips/services/), one modul
 | Suggestions    | Open-Meteo Geocoding (called by the browser) | Cities and towns. Also lists names within a letter or two of what was typed (same first 3 letters), biggest places first |
 | Geocoding      | OpenStreetMap Nominatim                     | Free-text addresses. Max 1 req/s                             |
 | Routing        | OSRM public server                          | See "Routes are car routes" below                             |
-| Weather        | Open-Meteo hourly forecast                  | Sustained wind, gusts, rain + showers, snowfall               |
+| Weather        | Open-Meteo hourly forecast (called by the browser) | Sustained wind, gusts, rain + showers, snowfall. See "Weather from the browser" below |
 
 ### Routes
 
@@ -83,12 +83,24 @@ The heatmap is a grid of cells around the 3 routes. Each cell has the same risk 
 
 ### Limits and caching
 
-Open-Meteo's free tier allows about 600 location-calls per minute, so each plan is capped:
+### Weather from the browser
+
+Open-Meteo's free tier is limited per IP address. Hosts like Render share a few outbound IPs among all their apps, so a deployed backend got rate limited even on tiny trips while barely making any calls itself. The forecasts are therefore fetched by the browser, and every user gets their own quota. A plan takes two requests:
+
+1. `POST /api/trips/plan/` geocodes, routes and places the checkpoints. It keeps that half of the plan in the cache for 15 minutes and returns a plan id plus the forecast locations and dates.
+2. The browser fetches those forecasts from Open-Meteo, 50 locations per request and 4 requests at a time.
+3. `POST /api/trips/plan/<plan_id>/weather/` takes the forecasts as Open-Meteo returned them and does the risk, recommendation and heatmap, so all the scoring stays in the tested Python code.
+
+The forecasts are posted back raw, about 270 KB for a short trip and 1.3 MB coast to coast, so the upload limit is raised to 10 MB.
+
+### Limits and caching
+
+Open-Meteo's free tier allows about 600 location-calls per minute per IP, so each plan is capped:
 
 - Checkpoints snap to a 0.25° grid (~17 mi), and nearby ones share a forecast. Above 250 locations the grid doubles until it fits.
 - The heatmap uses 0.5° cells, capped at 200. Coast-to-coast trips end up with a coarser grid, about 2°.
-- Checkpoints and heatmap request the same forecast window, so they share cache entries (30 min).
-- The cache lives in memory, so gunicorn runs one process with 8 threads and every request sees the same cache. Requests mostly wait on the third-party APIs, so threads are enough.
+- Checkpoints and heatmap use the same forecast window, so a location they share is fetched once.
+- Geocoding results are cached for a day. The cache lives in memory, and the half-finished plans live there too, so gunicorn runs one process with 8 threads and both requests of a plan reach the same cache. Requests mostly wait on the third-party APIs, so threads are enough.
 
 A paid Open-Meteo key would lift these caps and allow finer grids.
 
@@ -165,7 +177,8 @@ npm run build     # type-check + production build
 | POST   | `/api/auth/login/`    | —    | Returns `{token, user}`                           |
 | POST   | `/api/auth/logout/`   | ✓    | Deletes the token                                 |
 | GET    | `/api/auth/me/`       | ✓    | Current user                                      |
-| POST   | `/api/trips/plan/`    | ✓    | Routes, checkpoints, recommendation and heatmap   |
+| POST   | `/api/trips/plan/`    | ✓    | Routes and checkpoints, returns a plan id and the forecasts to fetch |
+| POST   | `/api/trips/plan/<plan_id>/weather/` | ✓ | Takes the forecasts, returns scored routes, recommendation and heatmap |
 
 Authenticated requests send `Authorization: Token <token>`. The plan request body:
 
@@ -205,10 +218,10 @@ docker-compose.yml   Postgres + backend (gunicorn) + frontend (nginx, proxies /a
 Things left out for time constraints, roughly in order of value:
 
 - **Intercontinental and non-US trips.** Geocoding and suggestions search the whole world, but a trip across an ocean only fails at the routing step with "No road route found", after two geocoding calls. Trips within another continent can route, but the app assumes the US: miles, a gust offset based on National Weather Service criteria, and a map that starts over the US. The simplest fix is to limit origins and destinations to North America in both geocoders and the suggestion list. A fuller one checks the continent up front and gives a clear message.
-- **Better caching.** The cache is in-process memory, so it's lost on every restart and forces gunicorn to a single process. Redis would let it survive restarts and scale to several workers. Route options aren't cached at all, and could be, keyed by the rounded origin and destination. Forecasts could expire when the weather model publishes a new run instead of after a fixed 30 minutes.
+- **Better caching.** The cache is in-process memory, so it's lost on every restart (along with half-finished plans) and forces gunicorn to a single process. Redis would let it survive restarts and scale to several workers. Route options aren't cached at all, and could be, keyed by the rounded origin and destination. Forecasts are no longer cached since the browser fetches them, and the browser could keep them for a while so re-planning the same trip doesn't fetch them again.
 - **Saving and loading trips.** Accounts already exist, so plans could be saved per user and reopened later. Old plans could also be re-checked against the latest forecast before departure, with a heads-up when a route's risk goes up.
 - **Real truck routing.** Swap OSRM's car profile for a truck router (see "Routes are car routes"). That means paid APIs or self-hosting OSRM / GraphHopper with a truck profile. It brings truck speeds, bridge heights and weight limits.
 - **Driver hours and rest stops.** ETAs assume nonstop driving. Adding the federal hours-of-service breaks would shift later checkpoints' forecast hours on long trips.
 - **Planning as a background job.** A long trip can take several seconds because of the third-party calls and Nominatim's 1 req/s limit. A task queue plus a progress indicator would keep requests short and allow retries.
-- **Rate limiting per user**, so one account can't use up the shared Open-Meteo and Nominatim quotas.
+- **Rate limiting per user**, so one account can't use up the shared Nominatim and OSRM quotas. Those two are still called from the backend's shared IP, and could hit the same problem the weather did.
 - **Frontend tests.** Only the backend has tests. Component tests for the form and slider, and a browser test of the full planning flow, would be next.

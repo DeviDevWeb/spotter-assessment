@@ -1,3 +1,8 @@
+from dataclasses import dataclass
+from datetime import datetime
+from uuid import uuid4
+
+from django.core.cache import cache
 from django.utils import timezone
 
 from ..domain import Checkpoint, Place, RouteOption, RouteSummary
@@ -5,20 +10,42 @@ from .checkpoints import build_checkpoints
 from .errors import InputError
 from .geo import haversine_miles
 from .geocoding import geocode
-from .heatmap import build_heatmap
+from .heatmap import build_heatmap, heatmap_cells
 from .recommendation import explain, recommend, summarize
 from .risk import classify
 from .routing import get_route_options
-from .weather import forecast_window, sample_checkpoints
+from .weather import HOURLY_VARIABLES, Location, Window, checkpoint_locations, forecast_window, parse_forecasts, sample_checkpoints
 
 # Straight-line distance below which origin and destination count as the same place
 MIN_TRIP_MILES = 0.5
 
+# A plan is done in two requests with the browser fetching the forecasts in between (see
+# weather.py). The first half waits in the cache for the second
+PLAN_CACHE_SECONDS = 60 * 15
 
-# Runs the full pipeline and returns the API response
-def plan_trip(request: dict) -> dict:
+
+@dataclass
+class PreparedTrip:
+    user_id: int
+    origin: Place
+    destination: Place
+    departure: datetime
+    load_weight_lb: int
+    routes: list[RouteOption]
+    window: Window
+    locations: list[Location]  # every forecast location, in the order the browser sends them back
+    checkpoint_grid: float
+    heatmap_grid: float
+    heatmap_locations: list[Location]
+
+
+def _cache_key(plan_id: str) -> str:
+    return f'plan:{plan_id}'
+
+
+# First half: places, routes and checkpoints. Returns the plan id and the forecasts to fetch
+def prepare_trip(request: dict, user_id: int) -> dict:
     departure = request['departure']
-    load_weight_lb = request['load_weight_lb']
 
     origin = geocode(request['origin'], request.get('origin_name', ''))
     destination = geocode(request['destination'], request.get('destination_name', ''))
@@ -30,25 +57,66 @@ def plan_trip(request: dict) -> dict:
     for route in routes:
         route.checkpoints = build_checkpoints(route, departure, now)
 
-    # Checkpoints and heatmap share one forecast window, so their cells share cache entries
+    # Checkpoints and heatmap share one forecast window, so overlapping locations are fetched once
     all_checkpoints = [cp for route in routes for cp in route.checkpoints]
     window = forecast_window(departure, max(cp.eta for cp in all_checkpoints))
-    sample_checkpoints(all_checkpoints, window)
+    checkpoint_grid, checkpoint_cells = checkpoint_locations(all_checkpoints)
+    heatmap_grid, heatmap_locations = heatmap_cells(routes)
+    locations = sorted(checkpoint_cells | set(heatmap_locations))
+
+    plan_id = uuid4().hex
+    prepared = PreparedTrip(
+        user_id=user_id,
+        origin=origin,
+        destination=destination,
+        departure=departure,
+        load_weight_lb=request['load_weight_lb'],
+        routes=routes,
+        window=window,
+        locations=locations,
+        checkpoint_grid=checkpoint_grid,
+        heatmap_grid=heatmap_grid,
+        heatmap_locations=heatmap_locations,
+    )
+    cache.set(_cache_key(plan_id), prepared, PLAN_CACHE_SECONDS)
+
+    return {
+        'plan_id': plan_id,
+        'forecast': {
+            'latitudes': [lat for lat, _ in locations],
+            'longitudes': [lon for _, lon in locations],
+            'start_date': window[0].isoformat(),
+            'end_date': window[1].isoformat(),
+            'hourly': list(HOURLY_VARIABLES),
+        },
+    }
+
+
+# Second half: the browser's forecasts in, scored routes, recommendation and heatmap out
+def finish_trip(plan_id: str, user_id: int, forecasts: list) -> dict:
+    prepared: PreparedTrip | None = cache.get(_cache_key(plan_id))
+    if prepared is None or prepared.user_id != user_id:
+        raise InputError('This plan has expired, please plan the trip again')
+
+    series = parse_forecasts(prepared.locations, forecasts)
+    routes = prepared.routes
+    all_checkpoints = [cp for route in routes for cp in route.checkpoints]
+    sample_checkpoints(all_checkpoints, series, prepared.checkpoint_grid)
 
     for cp in all_checkpoints:
         assert cp.weather is not None
-        cp.risk, cp.risk_factors = classify(cp.weather, load_weight_lb)
+        cp.risk, cp.risk_factors = classify(cp.weather, prepared.load_weight_lb)
 
     summaries = {route.id: summarize(route) for route in routes}
 
     return {
-        'origin': _place(origin),
-        'destination': _place(destination),
-        'departure': departure.isoformat(),
+        'origin': _place(prepared.origin),
+        'destination': _place(prepared.destination),
+        'departure': prepared.departure.isoformat(),
         'routes': [_route(route, summaries[route.id]) for route in routes],
         'recommended_route_id': recommend(list(summaries.values())),
         'recommendation_reason': explain(list(summaries.values())),
-        'heatmap': build_heatmap(routes, departure, window, load_weight_lb),
+        'heatmap': build_heatmap(prepared.heatmap_locations, prepared.heatmap_grid, series, prepared.departure, prepared.load_weight_lb),
     }
 
 

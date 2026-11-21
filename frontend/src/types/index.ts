@@ -97,6 +97,18 @@ export interface Heatmap {
     values: number[][]; // values[point][hour]
 }
 
+// First half of a plan: what the browser has to fetch from Open-Meteo before the plan can be scored
+export interface PreparedTrip {
+    plan_id: string;
+    forecast: {
+        latitudes: number[];
+        longitudes: number[];
+        start_date: string;
+        end_date: string;
+        hourly: string[]; // Open-Meteo hourly variable names
+    };
+}
+
 export interface TripPlan {
     origin: Place;
     destination: Place;

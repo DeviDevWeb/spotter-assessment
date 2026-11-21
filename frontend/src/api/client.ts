@@ -1,4 +1,4 @@
-import type { PlaceSuggestion, Session, TripPlan, TripRequest, User } from '../types';
+import type { PlaceSuggestion, PreparedTrip, Session, TripPlan, TripRequest, User } from '../types';
 
 // Base URL of the API, empty in dev so Vite's proxy handles /api
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -121,11 +121,91 @@ export const getMe = () => request<User>('/api/auth/me/');
 ////////////////Trips API///////////////
 ////////////////////////////////////////
 
+// Two backend requests with the forecasts fetched in between: the backend lists the forecast
+// locations, the browser fetches them, the backend scores the routes
 export const planTrip = async (body: TripRequest): Promise<TripPlan> => {
-    return request<TripPlan>('/api/trips/plan/', {
+    const prepared = await request<PreparedTrip>('/api/trips/plan/', {
         method: 'POST',
         body: JSON.stringify(body),
     });
+    const forecasts = await fetchForecasts(prepared.forecast);
+    return request<TripPlan>(`/api/trips/plan/${prepared.plan_id}/weather/`, {
+        method: 'POST',
+        body: JSON.stringify({ forecasts }),
+    });
+};
+
+////////////////////////////////////////
+////////////////Forecasts///////////////
+////////////////////////////////////////
+
+// Open-Meteo's free tier is limited per IP, so the forecasts are fetched from the browser: every
+// user gets their own quota instead of sharing the hosted backend's outbound IP with other apps
+const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
+
+// Locations per request, and requests in flight at once
+const FORECAST_BATCH_SIZE = 50;
+const FORECAST_PARALLEL = 4;
+
+// Open-Meteo "hourly" objects in the same order as the requested locations, passed on to the backend as is
+const fetchForecasts = async (forecast: PreparedTrip['forecast']): Promise<unknown[]> => {
+    const batches: number[][] = [];
+    for (let i = 0; i < forecast.latitudes.length; i += FORECAST_BATCH_SIZE) {
+        batches.push(forecast.latitudes.slice(i, i + FORECAST_BATCH_SIZE).map((_, k) => i + k));
+    }
+
+    const results: unknown[][] = new Array(batches.length);
+    let next = 0;
+    const worker = async () => {
+        while (next < batches.length) {
+            const index = next++;
+            results[index] = await fetchForecastBatch(forecast, batches[index]);
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(FORECAST_PARALLEL, batches.length) }, worker));
+    return results.flat();
+};
+
+const fetchForecastBatch = async (forecast: PreparedTrip['forecast'], indexes: number[]): Promise<unknown[]> => {
+    const params = new URLSearchParams({
+        latitude: indexes.map((i) => forecast.latitudes[i]).join(','),
+        longitude: indexes.map((i) => forecast.longitudes[i]).join(','),
+        hourly: forecast.hourly.join(','),
+        wind_speed_unit: 'mph',
+        precipitation_unit: 'inch',
+        timezone: 'GMT',
+        timeformat: 'unixtime',
+        start_date: forecast.start_date,
+        end_date: forecast.end_date,
+    });
+
+    let res: Response;
+    try {
+        res = await fetch(`${FORECAST_URL}?${params}`);
+    } catch {
+        throw new Error("Couldn't reach the weather service. Check your connection and try again.");
+    }
+    if (res.status === 429) {
+        throw new Error('The weather service is rate limiting this browser, try again in a minute.');
+    }
+
+    let data: unknown;
+    try {
+        data = await res.json();
+    } catch {
+        throw new Error(`The weather service returned an error (${res.status})`);
+    }
+    if (!res.ok) {
+        const reason = (data as { reason?: string } | null)?.reason;
+        throw new Error(reason ? `Weather service error: ${reason}` : `The weather service returned an error (${res.status})`);
+    }
+
+    // A single location comes back as an object, several as a list
+    const items = (Array.isArray(data) ? data : [data]) as { hourly?: unknown }[];
+    if (items.length !== indexes.length || items.some((item) => !item?.hourly)) {
+        throw new Error('Unexpected response from the weather service');
+    }
+    return items.map((item) => item.hourly);
 };
 
 ////////////////////////////////////////

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from ..domain import RouteOption
 from .geo import resample
 from .risk import classify
-from .weather import Location, Window, load_series, nearest_hour
+from .weather import Location, Series, nearest_hour
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +23,17 @@ MILES_PER_DEGREE = 69
 NO_DATA = -1
 
 
-def build_heatmap(routes: list[RouteOption], departure: datetime, window: Window, load_weight_lb: int) -> dict:
+# Grid size and forecast locations covering every route
+def heatmap_cells(routes: list[RouteOption]) -> tuple[float, list[Location]]:
     grid = BASE_GRID_DEGREES
     while len(cells := _corridor_cells(routes, grid)) > MAX_CELLS:
         grid *= 2
     if grid != BASE_GRID_DEGREES:
         logger.info('Heatmap grid coarsened to %s degrees (%s cells)', grid, len(cells))
+    return grid, sorted(cells)
 
-    locations = sorted(cells)
-    series = load_series(locations, window)
+
+def build_heatmap(locations: list[Location], grid: float, series: dict[Location, Series], departure: datetime, load_weight_lb: int) -> dict:
     first_hour = nearest_hour(departure)
 
     values = []

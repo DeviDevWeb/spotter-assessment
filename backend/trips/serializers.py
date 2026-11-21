@@ -27,3 +27,10 @@ class TripRequestSerializer(serializers.Serializer):
         if value > now + MAX_FUTURE_DEPARTURE:
             raise serializers.ValidationError('Departure must be within the next 48 hours')
         return value
+
+
+# Forecasts fetched by the browser - POST /api/trips/plan/<plan_id>/weather/
+# One Open-Meteo "hourly" object per location, in the order the first request listed them.
+# Their contents are checked when parsed (weather.parse_forecasts)
+class TripForecastsSerializer(serializers.Serializer):
+    forecasts = serializers.ListField(child=serializers.DictField(), allow_empty=False)
