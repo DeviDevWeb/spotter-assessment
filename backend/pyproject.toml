@@ -1,0 +1,8 @@
+# Lint settings, run with: ruff check .
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "SIM", "I"]
